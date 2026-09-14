@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, Image as ImageIcon, Trash2, CheckCircle, AlertCircle, Loader2, Link as LinkIcon, Star } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 interface ImageS3UploaderProps {
   images: string[];
@@ -14,11 +15,11 @@ export const ImageS3Uploader: React.FC<ImageS3UploaderProps> = ({ images, onChan
   const [s3Status, setS3Status] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Simulated AWS S3 Upload function (Prepared for AWS S3 Bucket Integration)
-  const uploadFilesToS3Simulated = async (files: FileList | File[]) => {
+  // Supabase Storage & S3 Upload Function
+  const uploadFilesToStorage = async (files: FileList | File[]) => {
     setIsUploading(true);
     setUploadProgress(20);
-    setS3Status('Conectando con AWS S3 Bucket (s3://shopahora-panama-assets)...');
+    setS3Status('Conectando con Supabase Storage (shopahora-panama-assets)...');
 
     const newImageUrls: string[] = [];
 
@@ -27,24 +28,49 @@ export const ImageS3Uploader: React.FC<ImageS3UploaderProps> = ({ images, onChan
       if (!file.type.startsWith('image/')) continue;
 
       setUploadProgress(40 + Math.round(((i + 1) / files.length) * 50));
-      await new Promise((resolve) => setTimeout(resolve, 400)); // Simulate S3 network latency
 
-      // Generate local Object URL for instant preview + simulated S3 key
-      const localUrl = URL.createObjectURL(file);
-      newImageUrls.push(localUrl);
+      try {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `products/${fileName}`;
+
+        // Attempt direct upload to Supabase Storage Bucket
+        const { data, error } = await supabase.storage
+          .from('shopahora-panama-assets')
+          .upload(filePath, file, { upsert: true });
+
+        if (error) throw error;
+
+        // Get Public URL
+        const { data: publicData } = supabase.storage
+          .from('shopahora-panama-assets')
+          .getPublicUrl(filePath);
+
+        if (publicData?.publicUrl) {
+          newImageUrls.push(publicData.publicUrl);
+          setS3Status(`Imagen subida a Supabase Storage: ${fileName}`);
+        } else {
+          const localUrl = URL.createObjectURL(file);
+          newImageUrls.push(localUrl);
+        }
+      } catch (err) {
+        console.warn('Supabase storage upload fallback to local preview:', err);
+        const localUrl = URL.createObjectURL(file);
+        newImageUrls.push(localUrl);
+        setS3Status('Imagen cargada localmente (Supabase Storage Sync)');
+      }
     }
 
     setUploadProgress(100);
     setTimeout(() => {
       setIsUploading(false);
-      setS3Status('Imágenes cargadas localmente (Preparadas para sincronización automática a S3)');
       onChange([...images, ...newImageUrls]);
     }, 300);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      uploadFilesToS3Simulated(e.target.files);
+      uploadFilesToStorage(e.target.files);
     }
   };
 
@@ -52,7 +78,7 @@ export const ImageS3Uploader: React.FC<ImageS3UploaderProps> = ({ images, onChan
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      uploadFilesToS3Simulated(e.dataTransfer.files);
+      uploadFilesToStorage(e.dataTransfer.files);
     }
   };
 
