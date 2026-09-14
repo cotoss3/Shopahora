@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { ProductCard } from './ProductCard';
-import { PRODUCTS } from '../data/products';
 import { SlidersHorizontal, PackageSearch } from 'lucide-react';
 import { useNavigationStore } from '../store/useNavigationStore';
+import { useInventoryStore } from '../store/useInventoryStore';
 
 interface ProductGridProps {
   searchQuery: string;
@@ -10,6 +10,7 @@ interface ProductGridProps {
 
 export const ProductGrid: React.FC<ProductGridProps> = ({ searchQuery }) => {
   const { openCategoryPage } = useNavigationStore();
+  const { products } = useInventoryStore();
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
   const [sortBy, setSortBy] = useState<'recommended' | 'price-low' | 'price-high' | 'rating'>('recommended');
 
@@ -22,7 +23,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({ searchQuery }) => {
   ];
 
   const filteredProducts = useMemo(() => {
-    return PRODUCTS.filter((product) => {
+    return products.filter((product) => {
       const matchesCategory = selectedCategory === 'todos' || product.category === selectedCategory;
       const matchesSearch =
         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

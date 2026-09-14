@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigationStore } from '../../store/useNavigationStore';
-import { PRODUCTS } from '../../data/products';
+import { useInventoryStore } from '../../store/useInventoryStore';
 import { ProductCard } from '../ProductCard';
 import { 
   Headphones, 
@@ -68,6 +68,7 @@ const CATEGORY_MAP: Record<string, CategoryInfo> = {
 
 export const CategoryPage: React.FC = () => {
   const { selectedCategory, navigateTo, openCategoryPage } = useNavigationStore();
+  const { products } = useInventoryStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'recommended' | 'price-low' | 'price-high' | 'rating'>('recommended');
 
@@ -83,7 +84,7 @@ export const CategoryPage: React.FC = () => {
   };
 
   const categoryProducts = useMemo(() => {
-    return PRODUCTS.filter((p) => {
+    return products.filter((p) => {
       const matchesCategory = p.category.toLowerCase() === catKey;
       const matchesSearch = 
         !searchQuery ||

@@ -1,11 +1,12 @@
 import React from 'react';
 import { ArrowRight, ShieldCheck, Truck, Star } from 'lucide-react';
 import { useCartStore } from '../store/useCartStore';
-import { PRODUCTS } from '../data/products';
+import { useInventoryStore } from '../store/useInventoryStore';
 
 export const Hero: React.FC = () => {
   const { addToCart } = useCartStore();
-  const featuredProduct = PRODUCTS[0]; // Studio Pro Wireless
+  const { products } = useInventoryStore();
+  const featuredProduct = products[0]; // Featured product
 
   return (
     <section className="relative pt-28 pb-16 lg:pt-36 lg:pb-24 overflow-hidden">

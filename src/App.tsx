@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
 import { ProductGrid } from './components/ProductGrid';
@@ -25,6 +25,7 @@ import { SEOHead } from './components/SEOHead';
 import { useCartStore } from './store/useCartStore';
 import { useAuthStore } from './store/useAuthStore';
 import { useNavigationStore } from './store/useNavigationStore';
+import { useInventoryStore } from './store/useInventoryStore';
 import { CheckCircle } from 'lucide-react';
 
 export function App() {
@@ -32,6 +33,11 @@ export function App() {
   const { notification } = useCartStore();
   const { currentUser } = useAuthStore();
   const { activePage } = useNavigationStore();
+  const { fetchProductsFromSupabase } = useInventoryStore();
+
+  useEffect(() => {
+    fetchProductsFromSupabase();
+  }, [fetchProductsFromSupabase]);
 
   const renderRoleView = () => {
     switch (currentUser.role) {

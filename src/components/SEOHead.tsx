@@ -1,27 +1,26 @@
 import React, { useEffect } from 'react';
 import { useNavigationStore, pageToPath } from '../store/useNavigationStore';
 import { useInventoryStore } from '../store/useInventoryStore';
-import { PRODUCTS } from '../data/products';
 
 export const SEOHead: React.FC = () => {
   const { activePage, selectedProduct, selectedOrder, editingProduct, selectedCategory, syncFromUrl } = useNavigationStore();
-  const { orders } = useInventoryStore();
+  const { products, orders } = useInventoryStore();
 
   // Listen to popstate (Browser Back / Forward buttons)
   useEffect(() => {
     const handlePopState = () => {
-      syncFromUrl(window.location.pathname, PRODUCTS, orders);
+      syncFromUrl(window.location.pathname, products, orders);
     };
 
     window.addEventListener('popstate', handlePopState);
     
     // Initial sync on mount
-    syncFromUrl(window.location.pathname, PRODUCTS, orders);
+    syncFromUrl(window.location.pathname, products, orders);
 
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [syncFromUrl, orders]);
+  }, [syncFromUrl, products, orders]);
 
   // Dynamic SEO Document Title & Meta Tag Updates (Google SEO Best Practices)
   useEffect(() => {

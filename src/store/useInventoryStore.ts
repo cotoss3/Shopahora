@@ -1,6 +1,66 @@
 import { create } from 'zustand';
 import { Product, StockLoss, Order, PanamaProvince, FleetVehicle } from '../types/product';
 import { PRODUCTS, PANAMA_SHIPPING_RATES } from '../data/products';
+import { supabase } from '../lib/supabase';
+
+const LOCAL_STORAGE_PRODUCTS_KEY = 'shopahora_products_v2';
+
+const getInitialProducts = (): Product[] => {
+  try {
+    const saved = localStorage.getItem(LOCAL_STORAGE_PRODUCTS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading products from localStorage:', e);
+  }
+  return PRODUCTS;
+};
+
+const saveProductsToLocal = (products: Product[]) => {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_PRODUCTS_KEY, JSON.stringify(products));
+  } catch (e) {
+    console.warn('Error saving products to localStorage:', e);
+  }
+};
+
+const syncProductToSupabase = async (product: Product) => {
+  try {
+    const payload = {
+      id: product.id,
+      name: product.name,
+      subtitle: product.subtitle || '',
+      description: product.description || '',
+      retail_price: product.price,
+      b2b_price: product.b2bPrice,
+      b2b_discount_percent: product.b2bDiscountPercent,
+      category_slug: product.category,
+      is_itbms_exempt: product.isItbmsExempt,
+      stock_physical: product.stockPhysical,
+      allow_dropshipping: product.allowDropshipping,
+      is_active: product.isActive,
+      rating: product.rating,
+      reviews_count: product.reviewsCount,
+      badge: product.badge || null,
+      colors: product.colors || [],
+      features: product.features || [],
+      images: product.images || []
+    };
+
+    const { error } = await supabase.from('products').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      console.warn('Supabase DB product upsert note (using localStorage fallback):', error.message);
+    } else {
+      console.log('Product synced to Supabase successfully:', product.id);
+    }
+  } catch (err) {
+    console.warn('Supabase sync warning:', err);
+  }
+};
 
 interface InventoryState {
   products: Product[];
@@ -8,6 +68,7 @@ interface InventoryState {
   orders: Order[];
 
   // Actions
+  fetchProductsFromSupabase: () => Promise<void>;
   toggleProductActive: (productId: string) => void;
   addProduct: (product: Product) => void;
   updateProduct: (product: Product) => void;
@@ -112,7 +173,7 @@ const INITIAL_ORDERS: Order[] = [
 ];
 
 export const useInventoryStore = create<InventoryState>((set) => ({
-  products: PRODUCTS,
+  products: getInitialProducts(),
   stockLosses: [
     {
       id: 'loss-1',
@@ -126,24 +187,70 @@ export const useInventoryStore = create<InventoryState>((set) => ({
   ],
   orders: INITIAL_ORDERS,
 
+  fetchProductsFromSupabase: async () => {
+    try {
+      const { data, error } = await supabase.from('products').select('*');
+      if (!error && data && data.length > 0) {
+        const dbProducts: Product[] = data.map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          subtitle: row.subtitle || '',
+          description: row.description || '',
+          price: Number(row.retail_price ?? row.price ?? 0),
+          b2bPrice: Number(row.b2b_price ?? row.b2bPrice ?? 0),
+          b2bDiscountPercent: Number(row.b2b_discount_percent ?? 0),
+          category: (row.category_slug || row.category || 'tecnologia') as Product['category'],
+          isItbmsExempt: Boolean(row.is_itbms_exempt),
+          stockPhysical: Number(row.stock_physical ?? 10),
+          allowDropshipping: Boolean(row.allow_dropshipping),
+          isActive: Boolean(row.is_active ?? true),
+          rating: Number(row.rating ?? 5.0),
+          reviewsCount: Number(row.reviews_count ?? 1),
+          badge: row.badge || undefined,
+          colors: row.colors || [],
+          features: row.features || [],
+          images: Array.isArray(row.images) ? row.images : []
+        }));
+
+        set({ products: dbProducts });
+        saveProductsToLocal(dbProducts);
+      }
+    } catch (err) {
+      console.warn('Error fetching products from Supabase:', err);
+    }
+  },
+
   toggleProductActive: (productId) => {
-    set(state => ({
-      products: state.products.map(p =>
-        p.id === productId ? { ...p, isActive: !p.isActive } : p
-      )
-    }));
+    set(state => {
+      const updated = state.products.map(p => {
+        if (p.id === productId) {
+          const next = { ...p, isActive: !p.isActive };
+          syncProductToSupabase(next);
+          return next;
+        }
+        return p;
+      });
+      saveProductsToLocal(updated);
+      return { products: updated };
+    });
   },
 
   addProduct: (newProduct) => {
-    set(state => ({
-      products: [newProduct, ...state.products]
-    }));
+    set(state => {
+      const updated = [newProduct, ...state.products];
+      saveProductsToLocal(updated);
+      syncProductToSupabase(newProduct);
+      return { products: updated };
+    });
   },
 
   updateProduct: (updatedProduct) => {
-    set(state => ({
-      products: state.products.map(p => p.id === updatedProduct.id ? updatedProduct : p)
-    }));
+    set(state => {
+      const updated = state.products.map(p => p.id === updatedProduct.id ? updatedProduct : p);
+      saveProductsToLocal(updated);
+      syncProductToSupabase(updatedProduct);
+      return { products: updated };
+    });
   },
 
   reportStockLoss: (productId, quantity, reason, reporterName) => {
@@ -154,11 +261,16 @@ export const useInventoryStore = create<InventoryState>((set) => ({
       const newPhysical = Math.max(0, targetProduct.stockPhysical - quantity);
       const isNowActive = newPhysical > 0 || targetProduct.allowDropshipping;
 
-      const updatedProducts = state.products.map(p =>
-        p.id === productId
-          ? { ...p, stockPhysical: newPhysical, isActive: isNowActive }
-          : p
-      );
+      const updatedProducts = state.products.map(p => {
+        if (p.id === productId) {
+          const next = { ...p, stockPhysical: newPhysical, isActive: isNowActive };
+          syncProductToSupabase(next);
+          return next;
+        }
+        return p;
+      });
+
+      saveProductsToLocal(updatedProducts);
 
       const newLoss: StockLoss = {
         id: `loss-${Date.now()}`,
