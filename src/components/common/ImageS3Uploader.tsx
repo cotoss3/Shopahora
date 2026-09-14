@@ -15,17 +15,7 @@ export const ImageS3Uploader: React.FC<ImageS3UploaderProps> = ({ images, onChan
   const [s3Status, setS3Status] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Helper to convert file to permanent Base64 Data URL (universal fallback across all computers)
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
-  };
-
-  // Supabase Storage & Permanent Image Upload Function
+  // Supabase Storage Upload Function (100% Remote Supabase Storage CDN URLs Only)
   const uploadFilesToStorage = async (files: FileList | File[]) => {
     setIsUploading(true);
     setUploadProgress(20);
@@ -44,12 +34,16 @@ export const ImageS3Uploader: React.FC<ImageS3UploaderProps> = ({ images, onChan
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `products/${fileName}`;
 
-        // Attempt direct upload to Supabase Storage Bucket
+        // Direct upload to Supabase Storage Bucket
         const { data, error } = await supabase.storage
           .from('shopahora-panama-assets')
           .upload(filePath, file, { upsert: true });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error al subir imagen a Supabase Storage:', error);
+          alert(`Error al subir a Supabase Storage: ${error.message}. Asegúrate de haber ejecutado el SQL del bucket en Supabase.`);
+          throw error;
+        }
 
         // Get Public URL from Supabase CDN
         const { data: publicData } = supabase.storage
@@ -58,28 +52,20 @@ export const ImageS3Uploader: React.FC<ImageS3UploaderProps> = ({ images, onChan
 
         if (publicData?.publicUrl) {
           newImageUrls.push(publicData.publicUrl);
-          setS3Status(`Imagen subida exitosamente a Supabase Storage CDN: ${fileName}`);
-        } else {
-          const base64Url = await fileToBase64(file);
-          newImageUrls.push(base64Url);
-          setS3Status('Imagen guardada con codificación universal de datos');
+          setS3Status(`Imagen pública subida a Supabase Storage: ${fileName}`);
         }
-      } catch (err) {
-        console.warn('Supabase storage bucket notice, converting to universal image format:', err);
-        try {
-          const base64Url = await fileToBase64(file);
-          newImageUrls.push(base64Url);
-          setS3Status('Imagen sincronizada para visualización en cualquier computadora');
-        } catch (base64Err) {
-          console.error('Error processing image file:', base64Err);
-        }
+      } catch (err: any) {
+        console.error('Fallo en la subida a Supabase Storage:', err);
+        setS3Status(`Error: ${err.message || 'No se pudo subir a Supabase Storage'}`);
       }
     }
 
     setUploadProgress(100);
     setTimeout(() => {
       setIsUploading(false);
-      onChange([...images, ...newImageUrls]);
+      if (newImageUrls.length > 0) {
+        onChange([...images, ...newImageUrls]);
+      }
     }, 300);
   };
 
