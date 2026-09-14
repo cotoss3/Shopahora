@@ -61,7 +61,7 @@ interface InventoryState {
 }
 
 export const useInventoryStore = create<InventoryState>((set, get) => ({
-  products: [],
+  products: PRODUCTS,
   stockLosses: [],
   orders: [],
   isLoading: false,

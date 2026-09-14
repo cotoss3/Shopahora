@@ -2,11 +2,14 @@ import React from 'react';
 import { ArrowRight, ShieldCheck, Truck, Star } from 'lucide-react';
 import { useCartStore } from '../store/useCartStore';
 import { useInventoryStore } from '../store/useInventoryStore';
+import { PRODUCTS } from '../data/products';
 
 export const Hero: React.FC = () => {
   const { addToCart } = useCartStore();
   const { products } = useInventoryStore();
-  const featuredProduct = products[0]; // Featured product
+  const featuredProduct = products.length > 0 ? products[0] : PRODUCTS[0];
+
+  if (!featuredProduct) return null;
 
   return (
     <section className="relative pt-28 pb-16 lg:pt-36 lg:pb-24 overflow-hidden">
