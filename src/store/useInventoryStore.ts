@@ -3,7 +3,7 @@ import { Product, StockLoss, Order, PanamaProvince, FleetVehicle } from '../type
 import { PANAMA_SHIPPING_RATES, PRODUCTS } from '../data/products';
 import { supabase } from '../lib/supabase';
 
-const syncProductToSupabase = async (product: Product) => {
+const syncProductToSupabase = async (product: Product): Promise<boolean> => {
   try {
     const payload = {
       id: product.id,
@@ -29,11 +29,13 @@ const syncProductToSupabase = async (product: Product) => {
     const { error } = await supabase.from('products').upsert(payload, { onConflict: 'id' });
     if (error) {
       console.error('Supabase DB product sync error:', error.message);
-    } else {
-      console.log('Product synced to Supabase:', product.id);
+      return false;
     }
+    console.log('Product synced to Supabase successfully:', product.id);
+    return true;
   } catch (err) {
     console.error('Supabase sync error:', err);
+    return false;
   }
 };
 
@@ -72,30 +74,38 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
       
       if (!error && data && data.length > 0) {
-        const dbProducts: Product[] = data.map((row: any) => ({
-          id: row.id,
-          name: row.name,
-          subtitle: row.subtitle || '',
-          description: row.description || '',
-          price: Number(row.retail_price ?? row.price ?? 0),
-          b2bPrice: Number(row.b2b_price ?? row.b2bPrice ?? 0),
-          b2bDiscountPercent: Number(row.b2b_discount_percent ?? 0),
-          category: (row.category_slug || row.category || 'tecnologia') as Product['category'],
-          isItbmsExempt: Boolean(row.is_itbms_exempt),
-          stockPhysical: Number(row.stock_physical ?? 10),
-          allowDropshipping: Boolean(row.allow_dropshipping),
-          isActive: Boolean(row.is_active ?? true),
-          rating: Number(row.rating ?? 5.0),
-          reviewsCount: Number(row.reviews_count ?? 1),
-          badge: row.badge || undefined,
-          colors: row.colors || [],
-          features: row.features || [],
-          images: Array.isArray(row.images) ? row.images : []
-        }));
+        const existingMap = new Map(get().products.map(p => [p.id, p]));
+
+        const dbProducts: Product[] = data.map((row: any) => {
+          const existing = existingMap.get(row.id);
+          const dbImages = Array.isArray(row.images) ? row.images : [];
+          // Preserve local updated images if existing product in memory has more images
+          const images = (existing && existing.images && existing.images.length > dbImages.length)
+            ? existing.images
+            : dbImages;
+
+          return {
+            id: row.id,
+            name: row.name,
+            subtitle: row.subtitle || '',
+            description: row.description || '',
+            price: Number(row.retail_price ?? row.price ?? 0),
+            b2bPrice: Number(row.b2b_price ?? row.b2bPrice ?? 0),
+            b2bDiscountPercent: Number(row.b2b_discount_percent ?? 0),
+            category: (row.category_slug || row.category || 'tecnologia') as Product['category'],
+            isItbmsExempt: Boolean(row.is_itbms_exempt),
+            stockPhysical: Number(row.stock_physical ?? 10),
+            allowDropshipping: Boolean(row.allow_dropshipping),
+            isActive: Boolean(row.is_active ?? true),
+            rating: Number(row.rating ?? 5.0),
+            reviewsCount: Number(row.reviews_count ?? 1),
+            badge: row.badge || undefined,
+            colors: row.colors || [],
+            features: row.features || [],
+            images: images.length > 0 ? images : ['https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=1000&auto=format&fit=crop']
+          };
+        });
         set({ products: dbProducts });
-      } else {
-        // Fallback initial load from default data if table is empty
-        set({ products: PRODUCTS });
       }
     } catch (err) {
       console.error('Error fetching products from Supabase:', err);
@@ -186,8 +196,10 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       products: [newProduct, ...state.products]
     }));
 
-    await syncProductToSupabase(newProduct);
-    await get().fetchProductsFromSupabase();
+    const success = await syncProductToSupabase(newProduct);
+    if (success) {
+      await get().fetchProductsFromSupabase();
+    }
   },
 
   updateProduct: async (updatedProduct) => {
@@ -195,8 +207,10 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       products: state.products.map(p => p.id === updatedProduct.id ? updatedProduct : p)
     }));
 
-    await syncProductToSupabase(updatedProduct);
-    await get().fetchProductsFromSupabase();
+    const success = await syncProductToSupabase(updatedProduct);
+    if (success) {
+      await get().fetchProductsFromSupabase();
+    }
   },
 
   reportStockLoss: async (productId, quantity, reason, reporterName) => {
