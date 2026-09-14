@@ -1,32 +1,7 @@
 import { create } from 'zustand';
 import { Product, StockLoss, Order, PanamaProvince, FleetVehicle } from '../types/product';
-import { PRODUCTS, PANAMA_SHIPPING_RATES } from '../data/products';
+import { PANAMA_SHIPPING_RATES, PRODUCTS } from '../data/products';
 import { supabase } from '../lib/supabase';
-
-const LOCAL_STORAGE_PRODUCTS_KEY = 'shopahora_products_v2';
-
-const getInitialProducts = (): Product[] => {
-  try {
-    const saved = localStorage.getItem(LOCAL_STORAGE_PRODUCTS_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (e) {
-    console.warn('Error reading products from localStorage:', e);
-  }
-  return PRODUCTS;
-};
-
-const saveProductsToLocal = (products: Product[]) => {
-  try {
-    localStorage.setItem(LOCAL_STORAGE_PRODUCTS_KEY, JSON.stringify(products));
-  } catch (e) {
-    console.warn('Error saving products to localStorage:', e);
-  }
-};
 
 const syncProductToSupabase = async (product: Product) => {
   try {
@@ -53,12 +28,12 @@ const syncProductToSupabase = async (product: Product) => {
 
     const { error } = await supabase.from('products').upsert(payload, { onConflict: 'id' });
     if (error) {
-      console.warn('Supabase DB product upsert note (using localStorage fallback):', error.message);
+      console.error('Supabase DB product sync error:', error.message);
     } else {
-      console.log('Product synced to Supabase successfully:', product.id);
+      console.log('Product synced to Supabase:', product.id);
     }
   } catch (err) {
-    console.warn('Supabase sync warning:', err);
+    console.error('Supabase sync error:', err);
   }
 };
 
@@ -66,130 +41,36 @@ interface InventoryState {
   products: Product[];
   stockLosses: StockLoss[];
   orders: Order[];
+  isLoading: boolean;
 
   // Actions
   fetchProductsFromSupabase: () => Promise<void>;
-  toggleProductActive: (productId: string) => void;
-  addProduct: (product: Product) => void;
-  updateProduct: (product: Product) => void;
-  reportStockLoss: (productId: string, quantity: number, reason: string, reporterName: string) => void;
-  editOrderQuantity: (orderId: string, productId: string, newQuantity: number) => void;
-  updateOrderStatus: (orderId: string, status: Order['trackingStatus']) => void;
-  approveOrderProposal: (orderId: string) => void;
-  rejectOrderProposal: (orderId: string, reason?: string) => void;
+  fetchOrdersFromSupabase: () => Promise<void>;
+  fetchStockLossesFromSupabase: () => Promise<void>;
+  fetchAllDataFromSupabase: () => Promise<void>;
+
+  toggleProductActive: (productId: string) => Promise<void>;
+  addProduct: (product: Product) => Promise<void>;
+  updateProduct: (product: Product) => Promise<void>;
+  reportStockLoss: (productId: string, quantity: number, reason: string, reporterName: string) => Promise<void>;
+  editOrderQuantity: (orderId: string, productId: string, newQuantity: number) => Promise<void>;
+  updateOrderStatus: (orderId: string, status: Order['trackingStatus']) => Promise<void>;
+  approveOrderProposal: (orderId: string) => Promise<void>;
+  rejectOrderProposal: (orderId: string, reason?: string) => Promise<void>;
   calculatePanamaShipping: (province: PanamaProvince, vehicle: FleetVehicle) => number;
 }
 
-const INITIAL_ORDERS: Order[] = [
-  {
-    id: 'ord-881',
-    orderNumber: 'ORD-2026-881',
-    userId: 'u-b2b-1',
-    customerName: 'Distribuidora Istmo S.A.',
-    salesRepName: 'Carlos Mendoza (Vendedor)',
-    customerRole: 'cliente_b2b',
-    channel: 'b2b',
-    subtotal: 1999.90,
-    itbmsTax: 0, // Exempt
-    shippingCost: 45.00,
-    discountAmount: 0,
-    totalAmount: 2044.90,
-    paymentMethod: 'credito_b2b',
-    paymentStatus: 'pendiente',
-    shippingProvince: 'Panamá Centro',
-    shippingCity: 'Ciudad de Panamá',
-    shippingAddress: 'Vía España, Edificio Empresarial Piso 5',
-    shippingVehicle: 'camion_5t',
-    trackingStatus: 'En Preparación',
-    approvalStatus: 'aprobado',
-    createdAt: '2026-09-14 08:30',
-    items: [
-      {
-        product: PRODUCTS[0],
-        quantity: 10
-      }
-    ]
-  },
-  {
-    id: 'ord-882',
-    orderNumber: 'PRE-2026-904',
-    userId: 'u-b2b-2',
-    customerName: 'Comercial Chiriquí S.A.',
-    salesRepName: 'Carlos Mendoza (Vendedor)',
-    customerRole: 'cliente_b2b',
-    channel: 'b2b',
-    subtotal: 3200.00,
-    itbmsTax: 224.00,
-    shippingCost: 75.00,
-    discountAmount: 480.00,
-    totalAmount: 3019.00,
-    paymentMethod: 'credito_b2b',
-    paymentStatus: 'en_revision',
-    shippingProvince: 'Chiriquí',
-    shippingCity: 'David',
-    shippingAddress: 'Vía Boquete, Bodega #12',
-    shippingVehicle: 'camion_5t',
-    trackingStatus: 'Pedido Recibido',
-    approvalStatus: 'pendiente_aprobacion',
-    proposedDiscountPercent: 15,
-    proposedNotes: 'Vendedor propone 15% de descuento especial por compra en volumen de 20 unidades.',
-    createdAt: '2026-09-14 09:15',
-    items: [
-      {
-        product: PRODUCTS[2],
-        quantity: 20
-      }
-    ]
-  },
-  {
-    id: 'ord-883',
-    orderNumber: 'ORD-2026-102',
-    userId: 'u-b2c-99',
-    customerName: 'Juan Pérez (Cliente Retail)',
-    salesRepName: undefined,
-    customerRole: 'cliente_b2c',
-    channel: 'b2c',
-    subtotal: 199.99,
-    itbmsTax: 14.00,
-    shippingCost: 5.00,
-    discountAmount: 0,
-    totalAmount: 218.99,
-    paymentMethod: 'contado',
-    paymentStatus: 'pagado',
-    shippingProvince: 'Panamá Oeste',
-    shippingCity: 'Arraiján',
-    shippingAddress: 'Barriada Valle Hermoso, Calle 4',
-    shippingVehicle: 'moto',
-    trackingStatus: 'Despachado en Flota',
-    approvalStatus: 'aprobado',
-    createdAt: '2026-09-14 10:00',
-    items: [
-      {
-        product: PRODUCTS[0],
-        quantity: 1
-      }
-    ]
-  }
-];
-
-export const useInventoryStore = create<InventoryState>((set) => ({
-  products: getInitialProducts(),
-  stockLosses: [
-    {
-      id: 'loss-1',
-      productId: '1',
-      productName: 'Audífonos Studio Pro Wireless',
-      quantity: 2,
-      reason: 'Caja abollada en inspección de bodega',
-      reportedBy: 'Roberto Gómez (Supervisor)',
-      createdAt: '2026-09-13 14:20'
-    }
-  ],
-  orders: INITIAL_ORDERS,
+export const useInventoryStore = create<InventoryState>((set, get) => ({
+  products: [],
+  stockLosses: [],
+  orders: [],
+  isLoading: false,
 
   fetchProductsFromSupabase: async () => {
     try {
-      const { data, error } = await supabase.from('products').select('*');
+      set({ isLoading: true });
+      const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
+      
       if (!error && data && data.length > 0) {
         const dbProducts: Product[] = data.map((row: any) => ({
           id: row.id,
@@ -211,119 +92,189 @@ export const useInventoryStore = create<InventoryState>((set) => ({
           features: row.features || [],
           images: Array.isArray(row.images) ? row.images : []
         }));
-
         set({ products: dbProducts });
-        saveProductsToLocal(dbProducts);
+      } else {
+        // Fallback initial load from default data if table is empty
+        set({ products: PRODUCTS });
       }
     } catch (err) {
-      console.warn('Error fetching products from Supabase:', err);
+      console.error('Error fetching products from Supabase:', err);
+    } finally {
+      set({ isLoading: false });
     }
   },
 
-  toggleProductActive: (productId) => {
-    set(state => {
-      const updated = state.products.map(p => {
-        if (p.id === productId) {
-          const next = { ...p, isActive: !p.isActive };
-          syncProductToSupabase(next);
-          return next;
-        }
-        return p;
-      });
-      saveProductsToLocal(updated);
-      return { products: updated };
-    });
+  fetchOrdersFromSupabase: async () => {
+    try {
+      const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+      if (!error && data) {
+        const mappedOrders: Order[] = data.map((row: any) => ({
+          id: row.id,
+          orderNumber: row.order_number,
+          userId: row.user_id,
+          customerName: row.customer_name,
+          salesRepName: row.sales_rep_name || undefined,
+          customerRole: row.customer_role || 'cliente_b2c',
+          channel: row.channel || 'b2c',
+          subtotal: Number(row.subtotal),
+          itbmsTax: Number(row.itbms_tax),
+          shippingCost: Number(row.shipping_cost),
+          discountAmount: Number(row.discount_amount || 0),
+          totalAmount: Number(row.total_amount),
+          paymentMethod: row.payment_method,
+          paymentStatus: row.payment_status,
+          shippingProvince: row.shipping_province,
+          shippingCity: row.shipping_city,
+          shippingAddress: row.shipping_address,
+          shippingVehicle: row.shipping_vehicle,
+          trackingStatus: row.tracking_status,
+          approvalStatus: row.approval_status,
+          proposedDiscountPercent: Number(row.proposed_discount_percent || 0),
+          proposedNotes: row.proposed_notes || undefined,
+          createdAt: new Date(row.created_at).toLocaleString(),
+          items: []
+        }));
+        set({ orders: mappedOrders });
+      }
+    } catch (err) {
+      console.error('Error fetching orders from Supabase:', err);
+    }
   },
 
-  addProduct: (newProduct) => {
-    set(state => {
-      const updated = [newProduct, ...state.products];
-      saveProductsToLocal(updated);
-      syncProductToSupabase(newProduct);
-      return { products: updated };
-    });
+  fetchStockLossesFromSupabase: async () => {
+    try {
+      const { data, error } = await supabase.from('stock_losses').select('*').order('created_at', { ascending: false });
+      if (!error && data) {
+        const mappedLosses: StockLoss[] = data.map((row: any) => ({
+          id: row.id,
+          productId: row.product_id,
+          productName: row.product_name,
+          quantity: Number(row.quantity),
+          reason: row.reason,
+          reportedBy: row.reported_by,
+          createdAt: new Date(row.created_at).toLocaleString()
+        }));
+        set({ stockLosses: mappedLosses });
+      }
+    } catch (err) {
+      console.error('Error fetching stock losses from Supabase:', err);
+    }
   },
 
-  updateProduct: (updatedProduct) => {
-    set(state => {
-      const updated = state.products.map(p => p.id === updatedProduct.id ? updatedProduct : p);
-      saveProductsToLocal(updated);
-      syncProductToSupabase(updatedProduct);
-      return { products: updated };
-    });
+  fetchAllDataFromSupabase: async () => {
+    await Promise.all([
+      get().fetchProductsFromSupabase(),
+      get().fetchOrdersFromSupabase(),
+      get().fetchStockLossesFromSupabase()
+    ]);
   },
 
-  reportStockLoss: (productId, quantity, reason, reporterName) => {
-    set(state => {
-      const targetProduct = state.products.find(p => p.id === productId);
-      if (!targetProduct) return state;
+  toggleProductActive: async (productId) => {
+    const target = get().products.find(p => p.id === productId);
+    if (!target) return;
 
-      const newPhysical = Math.max(0, targetProduct.stockPhysical - quantity);
-      const isNowActive = newPhysical > 0 || targetProduct.allowDropshipping;
+    const updated = { ...target, isActive: !target.isActive };
+    set(state => ({
+      products: state.products.map(p => p.id === productId ? updated : p)
+    }));
 
-      const updatedProducts = state.products.map(p => {
-        if (p.id === productId) {
-          const next = { ...p, stockPhysical: newPhysical, isActive: isNowActive };
-          syncProductToSupabase(next);
-          return next;
-        }
-        return p;
-      });
+    await syncProductToSupabase(updated);
+  },
 
-      saveProductsToLocal(updatedProducts);
+  addProduct: async (newProduct) => {
+    set(state => ({
+      products: [newProduct, ...state.products]
+    }));
 
-      const newLoss: StockLoss = {
-        id: `loss-${Date.now()}`,
-        productId,
-        productName: targetProduct.name,
+    await syncProductToSupabase(newProduct);
+    await get().fetchProductsFromSupabase();
+  },
+
+  updateProduct: async (updatedProduct) => {
+    set(state => ({
+      products: state.products.map(p => p.id === updatedProduct.id ? updatedProduct : p)
+    }));
+
+    await syncProductToSupabase(updatedProduct);
+    await get().fetchProductsFromSupabase();
+  },
+
+  reportStockLoss: async (productId, quantity, reason, reporterName) => {
+    const targetProduct = get().products.find(p => p.id === productId);
+    if (!targetProduct) return;
+
+    const newPhysical = Math.max(0, targetProduct.stockPhysical - quantity);
+    const isNowActive = newPhysical > 0 || targetProduct.allowDropshipping;
+    const updatedProduct = { ...targetProduct, stockPhysical: newPhysical, isActive: isNowActive };
+
+    // Insert into stock_losses table in Supabase
+    try {
+      await supabase.from('stock_losses').insert({
+        product_id: productId,
+        product_name: targetProduct.name,
         quantity,
         reason,
-        reportedBy: reporterName,
-        createdAt: new Date().toLocaleString()
-      };
+        reported_by: reporterName
+      });
+    } catch (err) {
+      console.error('Error inserting stock loss to Supabase:', err);
+    }
 
-      return {
-        products: updatedProducts,
-        stockLosses: [newLoss, ...state.stockLosses]
-      };
-    });
+    // Sync updated product stock in Supabase
+    await syncProductToSupabase(updatedProduct);
+    await get().fetchAllDataFromSupabase();
   },
 
-  editOrderQuantity: (orderId, productId, newQuantity) => {
+  editOrderQuantity: async (orderId, productId, newQuantity) => {
+    const targetOrder = get().orders.find(o => o.id === orderId);
+    if (!targetOrder) return;
+
+    const updatedItems = targetOrder.items.map(item => {
+      if (item.product.id === productId) {
+        return { ...item, quantity: newQuantity };
+      }
+      return item;
+    }).filter(item => item.quantity > 0);
+
+    const newSubtotal = updatedItems.reduce((acc, i) => acc + (i.product.price * i.quantity), 0);
+    const newTotal = newSubtotal + targetOrder.itbmsTax + targetOrder.shippingCost;
+
     set(state => ({
-      orders: state.orders.map(order => {
-        if (order.id !== orderId) return order;
-
-        const updatedItems = order.items.map(item => {
-          if (item.product.id === productId) {
-            return { ...item, quantity: newQuantity };
-          }
-          return item;
-        }).filter(item => item.quantity > 0);
-
-        const newSubtotal = updatedItems.reduce((acc, i) => acc + (i.product.price * i.quantity), 0);
-        const newTotal = newSubtotal + order.itbmsTax + order.shippingCost;
-
-        return {
-          ...order,
-          items: updatedItems,
-          subtotal: newSubtotal,
-          totalAmount: newTotal,
-          isModified: true
-        };
-      })
+      orders: state.orders.map(o => o.id === orderId ? {
+        ...o,
+        items: updatedItems,
+        subtotal: newSubtotal,
+        totalAmount: newTotal,
+        isModified: true
+      } : o)
     }));
+
+    // Sync order update to Supabase
+    try {
+      await supabase.from('orders').update({
+        subtotal: newSubtotal,
+        total_amount: newTotal
+      }).eq('id', orderId);
+    } catch (err) {
+      console.error('Error updating order in Supabase:', err);
+    }
   },
 
-  updateOrderStatus: (orderId, status) => {
+  updateOrderStatus: async (orderId, status) => {
     set(state => ({
       orders: state.orders.map(order =>
         order.id === orderId ? { ...order, trackingStatus: status } : order
       )
     }));
+
+    try {
+      await supabase.from('orders').update({ tracking_status: status }).eq('id', orderId);
+    } catch (err) {
+      console.error('Error updating order status in Supabase:', err);
+    }
   },
 
-  approveOrderProposal: (orderId) => {
+  approveOrderProposal: async (orderId) => {
     set(state => ({
       orders: state.orders.map(order =>
         order.id === orderId
@@ -331,9 +282,18 @@ export const useInventoryStore = create<InventoryState>((set) => ({
           : order
       )
     }));
+
+    try {
+      await supabase.from('orders').update({
+        approval_status: 'aprobado',
+        tracking_status: 'En Preparación'
+      }).eq('id', orderId);
+    } catch (err) {
+      console.error('Error approving proposal in Supabase:', err);
+    }
   },
 
-  rejectOrderProposal: (orderId, reason) => {
+  rejectOrderProposal: async (orderId, reason) => {
     set(state => ({
       orders: state.orders.map(order =>
         order.id === orderId
@@ -341,6 +301,16 @@ export const useInventoryStore = create<InventoryState>((set) => ({
           : order
       )
     }));
+
+    try {
+      await supabase.from('orders').update({
+        approval_status: 'rechazado',
+        tracking_status: 'Cancelado',
+        proposed_notes: reason
+      }).eq('id', orderId);
+    } catch (err) {
+      console.error('Error rejecting proposal in Supabase:', err);
+    }
   },
 
   calculatePanamaShipping: (province, vehicle) => {

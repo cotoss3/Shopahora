@@ -207,10 +207,22 @@ ON CONFLICT (id) DO NOTHING;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stock_losses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.b2b_credit_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.postdated_checks ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Public products reading" ON public.products FOR SELECT USING (true);
 CREATE POLICY "Public profiles reading" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Public orders reading" ON public.orders FOR SELECT USING (true);
+
+CREATE POLICY "Public products write" ON public.products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public profiles write" ON public.profiles FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public orders write" ON public.orders FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public order_items write" ON public.order_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public stock_losses write" ON public.stock_losses FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public b2b_credit_accounts write" ON public.b2b_credit_accounts FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public postdated_checks write" ON public.postdated_checks FOR ALL USING (true) WITH CHECK (true);
 
 -- ========================================================
 -- SEED DATA (DATOS INICIALES DE PRUEBA PARÁ PANAMÁ)

@@ -33,11 +33,11 @@ export function App() {
   const { notification } = useCartStore();
   const { currentUser } = useAuthStore();
   const { activePage } = useNavigationStore();
-  const { fetchProductsFromSupabase } = useInventoryStore();
+  const { fetchAllDataFromSupabase } = useInventoryStore();
 
   useEffect(() => {
-    fetchProductsFromSupabase();
-  }, [fetchProductsFromSupabase]);
+    fetchAllDataFromSupabase();
+  }, [fetchAllDataFromSupabase]);
 
   const renderRoleView = () => {
     switch (currentUser.role) {
