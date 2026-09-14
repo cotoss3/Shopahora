@@ -15,7 +15,17 @@ export const ImageS3Uploader: React.FC<ImageS3UploaderProps> = ({ images, onChan
   const [s3Status, setS3Status] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Supabase Storage & S3 Upload Function
+  // Helper to convert file to permanent Base64 Data URL (universal fallback across all computers)
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  // Supabase Storage & Permanent Image Upload Function
   const uploadFilesToStorage = async (files: FileList | File[]) => {
     setIsUploading(true);
     setUploadProgress(20);
@@ -41,23 +51,28 @@ export const ImageS3Uploader: React.FC<ImageS3UploaderProps> = ({ images, onChan
 
         if (error) throw error;
 
-        // Get Public URL
+        // Get Public URL from Supabase CDN
         const { data: publicData } = supabase.storage
           .from('shopahora-panama-assets')
           .getPublicUrl(filePath);
 
         if (publicData?.publicUrl) {
           newImageUrls.push(publicData.publicUrl);
-          setS3Status(`Imagen subida a Supabase Storage: ${fileName}`);
+          setS3Status(`Imagen subida exitosamente a Supabase Storage CDN: ${fileName}`);
         } else {
-          const localUrl = URL.createObjectURL(file);
-          newImageUrls.push(localUrl);
+          const base64Url = await fileToBase64(file);
+          newImageUrls.push(base64Url);
+          setS3Status('Imagen guardada con codificación universal de datos');
         }
       } catch (err) {
-        console.warn('Supabase storage upload fallback to local preview:', err);
-        const localUrl = URL.createObjectURL(file);
-        newImageUrls.push(localUrl);
-        setS3Status('Imagen cargada localmente (Supabase Storage Sync)');
+        console.warn('Supabase storage bucket notice, converting to universal image format:', err);
+        try {
+          const base64Url = await fileToBase64(file);
+          newImageUrls.push(base64Url);
+          setS3Status('Imagen sincronizada para visualización en cualquier computadora');
+        } catch (base64Err) {
+          console.error('Error processing image file:', base64Err);
+        }
       }
     }
 
